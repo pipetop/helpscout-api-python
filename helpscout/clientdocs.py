@@ -1,93 +1,52 @@
 import requests
 import json
-from . import models
+from . import modelsdocs
 import inspect
 
-class Client(object):
+class ClientDocs(object):
     def __init__(self):
-        self.base_url = "https://api.helpscout.net/v1/"
+        self.base_url = "https://docsapi.helpscout.net/v1/"
         self.api_key = ""
         self.pagestate = {}
 
-    def mailbox(self, mailbox_id, fields=None):
-        url = add_fields("mailboxes/{}.json".format(mailbox_id), fields)
-        return self.item(url, "Mailbox", 200)
+    def articles(self, category_id, fields=None, **kwargs):
+        url = add_fields("categories/{}/articles".format(category_id), fields)
+        return self.page(url, "Article", 'articles', 200, **kwargs)
 
-    def mailboxes(self, fields=None, **kwargs):
-        url = add_fields("mailboxes.json", fields)
-        return self.page(url, "Mailbox", 200, **kwargs)
+    def article(self, article_id, fields=None):
+        url = add_fields("articles/{}".format(article_id), fields)
+        return self.item(url, "Article", 200)
 
-    def folders(self, mailbox_id, fields=None, **kwargs):
-        url = add_fields("mailboxes/{}/folders.json".format(mailbox_id), fields)
-        return self.page(url, "Folder", 200, **kwargs)
+    def collections(self, fields=None, **kwargs):
+        url = add_fields("collections", fields)
+        return self.page(url, "Collection", 'collections', 200, **kwargs)
 
-    def conversations_for_folder(self, mailbox_id, folder_id, fields=None, **kwargs):
-        url = "mailboxes/{}/folders/{}/converstations.json".format(mailbox_id, folder_id)
-        url = add_fields(url, fields)
-        return self.page(url, "Conversation", 200, **kwargs)
-
-    def conversations_for_mailbox(self, mailbox_id, fields=None, **kwargs):
-        url = add_fields("mailboxes/{}/conversations.json".format(mailbox_id), fields)
-        return self.page(url, "Conversation", 200, **kwargs)
-
-    def conversations_for_customer_by_mailbox(self, mailbox_id, customer_id, fields=None, **kwargs):
-        url = "mailboxes/{}/customers/{}/conversations.json".format(mailbox_id, customer_id)
-        url = add_fields(url, fields)
-        return self.page(url, "Conversation", 200, **kwargs)
-
-    def conversations_for_user_by_mailbox(self, mailbox_id, user_id, fields=None, **kwargs):
-        url = "mailboxes/{}/customers/{}/conversations.json".format(mailbox_id, user_id)
-        url = add_fields(url, fields)
-        return self.page(url, "Conversation", 200, **kwargs)
-
-    def conversation(self, conversation_id, fields=None):
-        url = add_fields("conversations/{}.json".format(conversation_id), fields)
-        return self.item(url, "Conversation", 200)
-
-    def attachment_data(self, attachment_id):
-        url = "attachments/{}/data.json".format(attachment_id)
-        json_string = self.call_server(url, 200)
-        json_obj = json.loads(json_string)
-        item = json_obj["item"]
-        return item["data"]
-
-    def customers(self, fields=None, **kwargs):
-        url = add_fields("customers.json", fields)
-        return self.page(url, "Customer", 200, **kwargs)
-
-    def customer(self, customer_id, fields=None, **kwargs):
-        url = add_fields("customers/{}.json".format(customer_id), fields)
-        return self.item(url, "Customer", 200,)
-
-    def user(self, user_id, fields=None):
-        url = add_fields("users/{}.json".format(user_id), fields)
-        return self.item(url, "User", 200)
-
-    def users(self, fields=None, **kwargs):
-        url = add_fields("users.json", fields)
-        return self.page(url, "User", 200, **kwargs)
-
-    def users_for_mailbox(self, mailbox_id, fields=None, **kwargs):
-        url = add_fields("mailboxes/{}/users.json".format(mailbox_id), fields)
-        return self.page(url, "User", 200, **kwargs)
+    def categories(self, collection_id,fields=None, **kwargs):
+        url = add_fields("collections/{}/categories".format(collection_id), fields)
+        return self.page(url, "Category", 'categories', 200, **kwargs)
 
     def call_server(self, url, expected_code, **params):
         headers = {'Content-Type': 'application-json',
                    'Accept' : 'application-json',
                    'Accept-Encoding' : 'gzip, deflate'
                   }
+
         req = requests.get('{}{}'.format(self.base_url, url),
                            headers=headers, auth=(self.api_key, 'x'), params=params)
+
+
         check_status_code(req.status_code, expected_code)
+
         return req.text
 
     def item(self, url, cls, expected_code):
         string_json = self.call_server(url, expected_code)
-        return parse(json.loads(string_json)["item"], cls)
+        return parse(json.loads(string_json)[cls.lower()], cls)
 
-    def page(self, url, cls, expected_code, **kwargs):
+    def page(self, url, cls, page_cls, expected_code, **kwargs):
         # support calling many times to get subsequent pages
-        caller = inspect.stack()[1][3]
+        caller = url
+
         if kwargs.get('page') is None:
             if caller in self.pagestate:
                 (pcur, pmax) = [self.pagestate[caller].get(x) for x in ['page', 'pages']]
@@ -99,13 +58,12 @@ class Client(object):
         string_json = self.call_server(url, expected_code, **kwargs)
         json_obj = json.loads(string_json)
         page = Page()
-        for key, value in json_obj.items():
+        for key, value in json_obj[page_cls].items():
             setattr(page, key, value)
         page.items = parse_list(page.items, cls)
 
         # update state cache with response details
         self.pagestate[caller] = {'page': page.page, 'pages': page.pages}
-
         return page
 
     def clearstate(self, function=None):
@@ -149,7 +107,7 @@ def add_fields(url, fields):
     return final_str
 
 def parse(json_obj, cls):
-    obj = getattr(models, cls)()
+    obj = getattr(modelsdocs, cls)()
     for key, value in list(json_obj.items()):
         setattr(obj, key.lower(), value)
 
